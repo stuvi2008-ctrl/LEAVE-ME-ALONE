@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Leave Me Alone</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
+  #c { display: block; width: 100vw; height: 100vh; }
+  #ui { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+  #hud { position: absolute; top: 20px; left: 20px; color: #aaa; font-size: 13px; letter-spacing: 2px; }
+  #hud span { color: #ff4444; font-weight: bold; }
+  #level-label { position: absolute; top: 20px; right: 20px; color: #444; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; }
+  #controls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); color: #333; font-size: 11px; letter-spacing: 2px; text-align: center; }
+
+  #overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: #000; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 100; transition: opacity 0.8s;
+  }
+  #overlay.hidden { opacity: 0; pointer-events: none; }
+
+  .glitch {
+    font-size: clamp(32px, 6vw, 72px);
+    font-weight: bold; color: #ff3333; letter-spacing: 8px;
+    text-transform: uppercase; position: relative;
+    animation: glitch-anim 0.15s infinite;
+  }
+  @keyframes glitch-anim {
+    0%   { transform: translate(0); }
+    20%  { transform: translate(-2px, 2px); text-shadow: 3px 0 #0ff, -3px 0 #f0f; }
+    40%  { transform: translate(-2px,-2px); text-shadow: -3px 0 #0ff, 3px 0 #f0f; }
+    60%  { transform: translate(2px, 2px); text-shadow: 2px 0 #f0f, -2px 0 #0ff; }
+    80%  { transform: translate(2px,-2px); text-shadow: -2px 0 #f0f, 2px 0 #0ff; }
+    100% { transform: translate(0); text-shadow: none; }
+  }
+
+  .subtitle { color: #555; font-size: 14px; letter-spacing: 4px; margin: 16px 0 48px; }
+  .btn {
+    pointer-events: all; background: transparent; border: 1px solid #ff3333;
+    color: #ff3333; font-family: 'Courier New', monospace; font-size: 16px;
+    letter-spacing: 4px; padding: 14px 40px; cursor: pointer;
+    transition: all 0.2s; text-transform: uppercase;
+  }
+  .btn:hover { background: #ff3333; color: #000; }
+
+  #msg-box {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.92); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; z-index: 90;
+    opacity: 0; pointer-events: none; transition: opacity 0.6s;
+  }
+  #msg-box.show { opacity: 1; pointer-events: all; }
+  #msg-title { color: #ff3333; font-size: clamp(20px, 4vw, 48px); letter-spacing: 4px; margin-bottom: 16px; text-align: center; }
+  #msg-body  { color: #666; font-size: 13px; letter-spacing: 2px; text-align: center; max-width: 500px; line-height: 2; }
+  #msg-btn { margin-top: 40px; }
+
+  #reveal-box {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: #000; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; z-index: 95;
+    opacity: 0; pointer-events: none;
+  }
+
+  #death-flash {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: #ff0000; opacity: 0; pointer-events: none; z-index: 80;
+    transition: opacity 0.1s;
+  }
+
+  .scanlines {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px);
+    pointer-events: none; z-index: 200;
+  }
+
+  #particles {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 96;
+    overflow: hidden;
+  }
+  .particle {
+    position: absolute; width: 2px; height: 2px; border-radius: 50%;
+    background: #00eecc; opacity: 0;
+    animation: float-up linear infinite;
+  }
+  @keyframes float-up {
+    0%   { transform: translateY(0) scale(1); opacity: 0; }
+    10%  { opacity: 0.6; }
+    90%  { opacity: 0.2; }
+    100% { transform: translateY(-100vh) scale(0.3); opacity: 0; }
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="scanlines"></div>
+<div id="death-flash"></div>
+
+<div id="ui">
+  <div id="hud">DEATHS: <span id="death-count">0</span></div>
+  <div id="level-label" id="lv">LEVEL 1 / 6</div>
+  <div id="controls">A/D or ← → MOVE &nbsp;·&nbsp; W / ↑ / SPACE JUMP</div>
+</div>
+
+<div id="overlay">
+  <div class="glitch" id="title-glitch">LEAVE ME ALONE</div>
+  <div class="subtitle">escape the virtual world... if you can.</div>
+  <button class="btn" id="start-btn">WAKE UP</button>
+  <div style="color:#222;font-size:11px;letter-spacing:3px;margin-top:40px;">A/D MOVE · W/SPACE JUMP</div>
+</div>
+
+<div id="msg-box">
+  <div id="msg-title"></div>
+  <div id="msg-body"></div>
+  <button class="btn" id="msg-btn">CONTINUE</button>
+</div>
+
+<div id="reveal-box">
+  <div id="particles"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ─── ENGINE ────────────────────────────────────────────────────────────────
+const W = () => window.innerWidth, H = () => window.innerHeight;
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.setSize(W(), H());
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, W()/H(), 0.1, 200);
+camera.position.set(0, 4, 18);
+camera.lookAt(0, 2, 0);
+
+window.addEventListener('resize', () => {
+  renderer.setSize(W(), H());
+  camera.aspect = W()/H();
+  camera.updateProjectionMatrix();
+});
+
+// ─── STATE ─────────────────────────────────────────────────────────────────
+let deaths = 0, currentLevel = 1, totalLevels = 6;
+let gameActive = false, playerDead = false, levelWon = false;
+let deathTimeout = null;
+
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// ─── PHYSICS OBJECTS ───────────────────────────────────────────────────────
+let platforms = [], hazards = [], exitZone = null, hiddenExit = null;
+let movingPlatforms = [], fallingPlatforms = [], crushers = [], lasers = [];
+let playerMesh, playerBody;
+const gravity = -28;
+const MOVE_SPEED = 9, JUMP_SPEED = 14, MAX_FALL = -30;
+
+function makePlatform(x, y, w, h, color=0x333333, isKinematic=false) {
+  const geo = new THREE.BoxGeometry(w, h, 3);
+  const mat = new THREE.MeshStandardMaterial({ color });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, y, 0);
+  mesh.receiveShadow = true; mesh.castShadow = true;
+  scene.add(mesh);
+  const obj = { mesh, x, y, w, h, type:'platform', kinematic:isKinematic, velX:0, velY:0 };
+  platforms.push(obj);
+  return obj;
+}
+
+function makeHazard(x, y, w, h, color=0xff3333, onHit=null) {
+  const geo = new THREE.BoxGeometry(w, h, 2.5);
+  const mat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.4 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, y, 0);
+  scene.add(mesh);
+  const obj = { mesh, x, y, w, h, type:'hazard', onHit };
+  hazards.push(obj);
+  return obj;
+}
+
+function makeSpikes(x, y, count=5) {
+  const group = new THREE.Group();
+  for (let i = 0; i < count; i++) {
+    const geo = new THREE.ConeGeometry(0.18, 0.55, 4);
+    const mat = new THREE.MeshStandardMaterial({ color: 0xff4444, emissive: 0x550000, emissiveIntensity: 0.5 });
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set((i - count/2 + 0.5) * 0.42, 0.27, 0);
+    group.add(m);
+  }
+  group.position.set(x, y, 0);
+  scene.add(group);
+  const halfW = count * 0.21;
+  const obj = { mesh: group, x, y, w: halfW*2, h: 0.55, type:'hazard' };
+  hazards.push(obj);
+  return obj;
+}
+
+function makeExit(x, y, isReal=true, isHidden=false) {
+  const frame = new THREE.Mesh(
+    new THREE.BoxGeometry(1.6, 2.4, 0.3),
+    new THREE.MeshStandardMaterial({ color: 0x111111 })
+  );
+  const door = new THREE.Mesh(
+    new THREE.BoxGeometry(1.3, 2.1, 0.12),
+    new THREE.MeshStandardMaterial({
+      color: isReal ? 0x00ff88 : 0x00aa55,
+      emissive: isReal ? 0x00ff88 : 0x00aa55,
+      emissiveIntensity: isHidden ? 0.15 : (isReal ? 0.6 : 0.25),
+      transparent: true, opacity: isHidden ? 0.35 : 0.85
+    })
+  );
+  frame.position.set(x, y+1.2, 0);
+  door.position.set(x, y+1.2, 0.07);
+  scene.add(frame); scene.add(door);
+
+  if (!isHidden) {
+    const light = new THREE.PointLight(isReal ? 0x00ff88 : 0x00aa55, isReal ? 2 : 0.5, 6);
+    light.position.set(x, y+1.8, 1);
+    scene.add(light);
+  }
+
+  return { x, y, w: 1.4, h: 2.4, isReal, meshes: [frame, door] };
+}
+
+// ─── PLAYER ────────────────────────────────────────────────────────────────
+function createPlayer() {
+  const group = new THREE.Group();
+
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(0.62, 0.82, 0.44),
+    new THREE.MeshStandardMaterial({ color: 0x44aaff, emissive: 0x1144aa, emissiveIntensity: 0.3 })
+  );
+  const head = new THREE.Mesh(
+    new THREE.BoxGeometry(0.52, 0.44, 0.44),
+    new THREE.MeshStandardMaterial({ color: 0x66ccff, emissive: 0x2255bb, emissiveIntensity: 0.3 })
+  );
+  head.position.set(0, 0.63, 0);
+
+  const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.09, 0.05), new THREE.MeshStandardMaterial({ color: 0x000000 }));
+  const eyeR = eyeL.clone();
+  eyeL.position.set(-0.13, 0.68, 0.23); eyeR.position.set(0.13, 0.68, 0.23);
+
+  group.add(body, head, eyeL, eyeR);
+  group.position.set(-8, 2, 0);
+  scene.add(group);
+
+  const light = new THREE.PointLight(0x44aaff, 0.4, 3);
+  group.add(light);
+
+  playerMesh = group;
+  playerBody = { x: -8, y: 2, w: 0.55, h: 1.1, vx: 0, vy: 0, grounded: false, coyote: 0, jumpBuffer: 0 };
+}
+
+// ─── COLLISION ─────────────────────────────────────────────────────────────
+function rectOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+  return Math.abs(ax-bx) < (aw+bw)/2 && Math.abs(ay-by) < (ah+bh)/2;
+}
+
+function resolveVsStatic(body, plats) {
+  for (const p of plats) {
+    const px = p.mesh.position.x, py = p.mesh.position.y;
+    const pw = p.w, ph = p.h;
+    if (!rectOverlap(body.x, body.y, body.w, body.h, px, py, pw, ph)) continue;
+
+    const overlapX = (body.w+pw)/2 - Math.abs(body.x - px);
+    const overlapY = (body.h+ph)/2 - Math.abs(body.y - py);
+
+    if (overlapY < overlapX) {
+      if (body.y > py) {
+        body.y = py + (ph+body.h)/2;
+        if (body.vy < 0) { body.vy = 0; body.grounded = true; }
+        if (p.kinematic) { body.x += p.velX * 0.016; }
+      } else {
+        body.y = py - (ph+body.h)/2;
+        if (body.vy > 0) body.vy = -2;
+      }
+    } else {
+      if (body.x > px) body.x = px + (pw+body.w)/2;
+      else body.x = px - (pw+body.w)/2;
+      body.vx = 0;
+    }
+  }
+}
+
+// ─── LEVEL SETUP ───────────────────────────────────────────────────────────
+function clearLevel() {
+  platforms = []; hazards = []; exitZone = null; hiddenExit = null;
+  movingPlatforms = []; fallingPlatforms = []; crushers = []; lasers = [];
+  while (scene.children.length > 0) scene.remove(scene.children[0]);
+  setupLighting();
+}
+
+function setupLighting() {
+  const ambient = new THREE.AmbientLight(0x111111, 0.6);
+  scene.add(ambient);
+  const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+  sun.position.set(10, 20, 10);
+  sun.castShadow = true;
+  sun.shadow.mapSize.setScalar(2048);
+  scene.add(sun);
+  scene.fog = new THREE.Fog(0x050508, 20, 60);
+  scene.background = new THREE.Color(0x050508);
+}
+
+function buildLevel(n) {
+  clearLevel();
+  createPlayer();
+  playerBody.x = -8; playerBody.y = 2; playerBody.vx = 0; playerBody.vy = 0;
+  playerMesh.position.set(-8, 2, 0);
+
+  // Floor death / ambient
+  const fl = new THREE.PointLight(0xff3300, 0.5, 30);
+  fl.position.set(5, -8, 5); scene.add(fl);
+
+  if (n === 1) buildLevel1();
+  else if (n === 2) buildLevel2();
+  else if (n === 3) buildLevel3();
+  else if (n === 4) buildLevel4();
+  else if (n === 5) buildLevel5();
+  else if (n === 6) buildLevel6();
+
+  document.getElementById('level-label').textContent = `LEVEL ${n} / ${totalLevels}`;
+}
+
+// ─── LEVEL 1: Deceptive Beginning ──────────────────────────────────────────
+function buildLevel1() {
+  scene.background = new THREE.Color(0x070710);
+  scene.fog = new THREE.Fog(0x070710, 25, 55);
+
+  // Hidden exit at start (looks like decoration)
+  hiddenExit = makeExit(-11, 0, true, true);
+  hiddenExit.isHidden = true;
+
+  // Starting platform
+  makePlatform(-8, 0, 5, 1, 0x222233);
+  // Platforms right
+  makePlatform(-4, 0.5, 3, 0.8, 0x2a2a3a);
+  makePlatform(0, 1, 3, 0.8, 0x2a2a3a);
+  makePlatform(4, 1.5, 3, 0.8, 0x2a2a3a);
+  makeSpikes(2.5, 1.9, 3);
+  makePlatform(8, 2, 4, 1, 0x2a2a3a);
+  makeSpikes(7, 2.55, 2);
+  makePlatform(12, 2, 4, 1, 0x2a2a3a);
+
+  exitZone = makeExit(13.5, 2, true);
+
+  const l1 = new THREE.PointLight(0x4466ff, 0.6, 15); l1.position.set(5, 4, 3); scene.add(l1);
+  const l2 = new THREE.PointLight(0xff4400, 0.4, 10); l2.position.set(-8, 3, 2); scene.add(l2);
+}
+
+// ─── LEVEL 2: Moving Platforms ─────────────────────────────────────────────
+function buildLevel2() {
+  scene.background = new THREE.Color(0x08060e);
+  hiddenExit = makeExit(-11, 0, true, true);
+
+  makePlatform(-8, 0, 5, 1, 0x1a1a2a);
+
+  // Moving platform
+  const mp1 = makePlatform(-4, 1, 2.5, 0.5, 0x4455cc, true);
+  movingPlatforms.push({ obj: mp1, startX:-4, startY:1, endX:-4, endY:4, t:0, speed:1.5 });
+
+  makePlatform(0, 3, 4, 0.5, 0x1a1a2a);
+  makeSpikes(-0.5, 3.55, 4);
+  makeSpikes(1.5, 3.55, 3);
+  // Safe corridor
+  makePlatform(0.8, 3.25, 0.7, 0.25, 0x004400);
+
+  // Falling platforms
+  const fp1 = makePlatform(4, 3.5, 2, 0.5, 0xaa6600, true);
+  fallingPlatforms.push({ obj:fp1, origY:3.5, triggered:false, timer:0, delay:0.45, falling:false });
+  const fp2 = makePlatform(7, 4, 2, 0.5, 0xaa6600, true);
+  fallingPlatforms.push({ obj:fp2, origY:4, triggered:false, timer:0, delay:0.35, falling:false });
+
+  makePlatform(10, 3.5, 3.5, 1, 0x1a1a2a);
+  makeSpikes(9.2, 4.1, 2);
+  makePlatform(13, 3.5, 3.5, 1, 0x1a1a2a);
+
+  exitZone = makeExit(14.5, 3.5, true);
+
+  const l1 = new THREE.PointLight(0x0055ff, 0.7, 18); l1.position.set(2, 6, 3); scene.add(l1);
+}
+
+// ─── LEVEL 3: Crushers & Tight ─────────────────────────────────────────────
+function buildLevel3() {
+  scene.background = new THREE.Color(0x0e0606);
+  hiddenExit = makeExit(-11, 0, true, true);
+
+  makePlatform(-8, 0, 5, 1, 0x1a1010);
+  makePlatform(-3, 0, 6, 0.5, 0x1a1010);
+  makeSpikes(-2, 0.55, 5);
+
+  // Crushers
+  const c1 = makePlatform(-4, 7, 1.5, 2, 0x555555, true);
+  crushers.push({ obj:c1, baseY:7, range:3.5, speed:2.5, t:Math.random()*Math.PI*2 });
+  const c2 = makePlatform(-2, 7.5, 1.5, 2, 0x555555, true);
+  crushers.push({ obj:c2, baseY:7.5, range:3.5, speed:3, t:Math.random()*Math.PI*2 });
+
+  makePlatform(2, 0, 4, 0.5, 0x1a1010);
+  // Wall corridor
+  makePlatform(1.2, 2.5, 0.3, 3, 0x222222);
+  makePlatform(3, 2.5, 0.3, 3, 0x222222);
+  makeSpikes(2, 0.5, 5);
+
+  // Moving platform
+  const mp1 = makePlatform(5.5, 1, 1.6, 0.5, 0xff8800, true);
+  movingPlatforms.push({ obj:mp1, startX:5.5, startY:1, endX:8.5, endY:1, t:0, speed:2 });
+
+  makePlatform(10, 0, 5.5, 0.5, 0x1a1010);
+  const c3 = makePlatform(9, 7, 1.2, 2.5, 0x555555, true);
+  crushers.push({ obj:c3, baseY:7, range:4, speed:4, t:Math.random()*Math.PI*2 });
+  const c4 = makePlatform(11, 7.5, 1.2, 2.5, 0x555555, true);
+  crushers.push({ obj:c4, baseY:7.5, range:4.5, speed:3.5, t:Math.random()*Math.PI*2 });
+
+  makePlatform(14, 1, 3.5, 1, 0x1a1010);
+  exitZone = makeExit(15.5, 1, true);
+
+  const l1 = new THREE.PointLight(0xff3300, 1, 12); l1.position.set(-3, 4, 3); scene.add(l1);
+  const l2 = new THREE.PointLight(0xff2200, 1, 12); l2.position.set(10, 4, 3); scene.add(l2);
+}
+
+// ─── LEVEL 4: Laser Hell ───────────────────────────────────────────────────
+function buildLevel4() {
+  scene.background = new THREE.Color(0x0a0210);
+  hiddenExit = makeExit(-11, 0, true, true);
+
+  makePlatform(-8, 0, 5, 1, 0x100a18);
+  makePlatform(-3, 0, 6, 0.5, 0x100a18);
+
+  // Laser corridor (represented as visual + hazard)
+  makeLaser(-4, 2.5, 0.1, 3.5, 2.2, false);
+  makeLaser(-2, 2.5, 0.1, 3.5, 2.5, false);
+  makeLaser(0, 2.5, 0.1, 3.5, 1.8, false);
+
+  makePlatform(3, 1, 2, 0.5, 0x100a18);
+  makeLaser(3, 3.5, 4, 0.1, 1.5, true);
+
+  makePlatform(6, 2, 2, 0.5, 0x100a18);
+  makeLaser(6, 0.5, 4, 0.1, 2, true);
+  makeLaser(6, 4.5, 4, 0.1, 1.8, true);
+
+  // Falling platforms
+  const fp1 = makePlatform(9, 3, 1.6, 0.5, 0xaa6600, true);
+  fallingPlatforms.push({ obj:fp1, origY:3, triggered:false, timer:0, delay:0.5, falling:false });
+  makeLaser(9, 5, 0.1, 3.5, 3, false);
+
+  const fp2 = makePlatform(11.5, 3.5, 1.6, 0.5, 0xaa6600, true);
+  fallingPlatforms.push({ obj:fp2, origY:3.5, triggered:false, timer:0, delay:0.4, falling:false });
+
+  makePlatform(14, 2.5, 4.5, 0.5, 0x100a18);
+  makeLaser(13, 4.5, 0.1, 3, 2.5, false);
+  makeLaser(15, 4.5, 0.1, 3, 2.2, false);
+  makeSpikes(14, 3.1, 4);
+  makePlatform(14, 3.25, 0.7, 0.3, 0x004400);
+
+  makePlatform(17.5, 2.5, 3.5, 1, 0x100a18);
+  exitZone = makeExit(19, 2.5, true);
+
+  const l1 = new THREE.PointLight(0xff0044, 0.7, 22); l1.position.set(0, 5, 3); scene.add(l1);
+  const l2 = new THREE.PointLight(0xff0044, 0.7, 22); l2.position.set(12, 5, 3); scene.add(l2);
+}
+
+// ─── LEVEL 5: Chaos Mode ───────────────────────────────────────────────────
+function buildLevel5() {
+  scene.background = new THREE.Color(0x0c0012);
+  hiddenExit = makeExit(-11, 0, true, true);
+
+  makePlatform(-8, 0, 3.5, 1, 0x120018);
+  const c0 = makePlatform(-6, 6, 1.5, 2, 0x555555, true);
+  crushers.push({ obj:c0, baseY:6, range:2.5, speed:4, t:0 });
+
+  // Disappearing (blinking) hazard-floor
+  makePlatform(-4, -1, 8, 0.5, 0x110011);
+  makeSpikes(-5, -0.5, 6);
+  makeSpikes(-2, -0.5, 6);
+  makeSpikes(1, -0.5, 6);
+
+  // Fake safe platforms (falling)
+  const dp1 = makePlatform(-4, 1.5, 2, 0.5, 0x8844ff, true);
+  fallingPlatforms.push({ obj:dp1, origY:1.5, triggered:false, timer:0, delay:0.2, falling:false });
+  const dp2 = makePlatform(-1, 2, 2, 0.5, 0x8844ff, true);
+  fallingPlatforms.push({ obj:dp2, origY:2, triggered:false, timer:0, delay:0.18, falling:false });
+  const dp3 = makePlatform(2, 2.5, 2, 0.5, 0x8844ff, true);
+  fallingPlatforms.push({ obj:dp3, origY:2.5, triggered:false, timer:0, delay:0.15, falling:false });
+
+  makePlatform(5, 1.5, 4.5, 0.5, 0x120018);
+  makeLaser(4, 3.5, 0.1, 3.5, 3, false);
+  makeLaser(6, 3.5, 0.1, 3.5, 2.5, false);
+  const c1 = makePlatform(5, 7.5, 1, 2, 0x555555, true);
+  crushers.push({ obj:c1, baseY:7.5, range:3.5, speed:5, t:1 });
+
+  const mp1 = makePlatform(8.5, 2.5, 1.6, 0.5, 0xff4400, true);
+  movingPlatforms.push({ obj:mp1, startX:8.5, startY:2.5, endX:11.5, endY:4.5, t:0, speed:1.5 });
+  makeLaser(10, 3.5, 4.5, 0.1, 2, true);
+
+  const fp1 = makePlatform(13, 4.5, 1.6, 0.5, 0xaa6600, true);
+  fallingPlatforms.push({ obj:fp1, origY:4.5, triggered:false, timer:0, delay:0.25, falling:false });
+  const fp2 = makePlatform(15, 5, 1.6, 0.5, 0xaa6600, true);
+  fallingPlatforms.push({ obj:fp2, origY:5, triggered:false, timer:0, delay:0.2, falling:false });
+  const fp3 = makePlatform(17, 5.5, 1.6, 0.5, 0xaa6600, true);
+  fallingPlatforms.push({ obj:fp3, origY:5.5, triggered:false, timer:0, delay:0.18, falling:false });
+
+  makePlatform(19.5, 3.5, 4.5, 0.5, 0x120018);
+  const c2 = makePlatform(18.5, 8, 1.2, 2, 0x555555, true);
+  crushers.push({ obj:c2, baseY:8, range:3.5, speed:4.5, t:0.5 });
+  const c3 = makePlatform(20.5, 8.5, 1.2, 2, 0x555555, true);
+  crushers.push({ obj:c3, baseY:8.5, range:4, speed:5, t:1.5 });
+  makeLaser(19.5, 1, 4.5, 0.1, 2.8, true);
+  makeSpikes(19.5, 4.1, 5);
+  makePlatform(19.5, 4.25, 0.55, 0.3, 0x003300);
+
+  makePlatform(23, 3.5, 3.5, 1, 0x120018);
+  exitZone = makeExit(24.5, 3.5, true);
+
+  const l1 = new THREE.PointLight(0xff0066, 0.8, 18); l1.position.set(-3, 6, 3); scene.add(l1);
+  const l2 = new THREE.PointLight(0x6600ff, 0.8, 18); l2.position.set(10, 6, 3); scene.add(l2);
+  const l3 = new THREE.PointLight(0xff3300, 1, 12); l3.position.set(20, 6, 3); scene.add(l3);
+}
+
+// ─── LEVEL 6: THE FINAL NIGHTMARE ──────────────────────────────────────────
+function buildLevel6() {
+  scene.background = new THREE.Color(0x0e0000);
+  // At this point we place a very prominent "real" looking exit right at spawn
+  // The hidden exit here is NOT hidden — it's bold and right there — but
+  // we've already locked the narrative so the player will press on.
+  hiddenExit = makeExit(-11.5, 0, true, false); // fully visible but unreachable without going left
+  hiddenExit.isReveal = true;
+
+  makePlatform(-8, 0, 5, 1, 0x1a0000);
+
+  // Trap floor
+  const tf1 = makePlatform(-4, 0, 3, 0.5, 0x333333, true);
+  fallingPlatforms.push({ obj:tf1, origY:0, triggered:false, timer:0, delay:0.1, falling:false });
+  makePlatform(-4, -2.5, 3, 0.5, 0x1a0000);
+  makeSpikes(-4, -1.9, 7);
+
+  const mp1 = makePlatform(-1, 0, 1.6, 0.5, 0xff6600, true);
+  movingPlatforms.push({ obj:mp1, startX:-1, startY:0, endX:-1, endY:3.5, t:0, speed:2.5 });
+
+  makePlatform(3, 2.5, 6, 0.5, 0x1a0000);
+  const c1 = makePlatform(1.5, 7, 1.2, 2, 0x555555, true);
+  crushers.push({ obj:c1, baseY:7, range:3, speed:5, t:0 });
+  const c2 = makePlatform(3.5, 7.5, 1.2, 2, 0x555555, true);
+  crushers.push({ obj:c2, baseY:7.5, range:3.5, speed:4.5, t:1 });
+  const c3 = makePlatform(5.5, 7, 1.2, 2, 0x555555, true);
+  crushers.push({ obj:c3, baseY:7, range:3.5, speed:5.5, t:2 });
+
+  makeLaser(2, 1.5, 5, 0.1, 3, true);
+  makeLaser(4, 4.5, 5, 0.1, 2.5, true);
+
+  // Teleport hazards (blinking)
+  makeTeleportSpikes([[2,3.5],[3,3.5],[4,3.5],[3.5,3.2]], 0.6);
+
+  makePlatform(7, 2.5, 0.5, 6, 0x222222);
+
+  const fp1 = makePlatform(9, 3, 1.3, 0.5, 0xaa5500, true);
+  fallingPlatforms.push({ obj:fp1, origY:3, triggered:false, timer:0, delay:0.14, falling:false });
+  const fp2 = makePlatform(11, 3.5, 1.3, 0.5, 0xaa5500, true);
+  fallingPlatforms.push({ obj:fp2, origY:3.5, triggered:false, timer:0, delay:0.11, falling:false });
+  const fp3 = makePlatform(13, 4, 1.3, 0.5, 0xaa5500, true);
+  fallingPlatforms.push({ obj:fp3, origY:4, triggered:false, timer:0, delay:0.09, falling:false });
+
+  makeLaser(10, 5.5, 0.1, 3.5, 4, false);
+  makeLaser(12, 5.5, 0.1, 3.5, 3.5, false);
+
+  makePlatform(16, 3.5, 7, 0.5, 0x1a0000);
+  const c4 = makePlatform(15.5, 8.5, 1, 2, 0x555555, true);
+  crushers.push({ obj:c4, baseY:8.5, range:4.5, speed:6, t:0.3 });
+  const c5 = makePlatform(17.5, 8, 1, 2, 0x555555, true);
+  crushers.push({ obj:c5, baseY:8, range:4, speed:5.5, t:1.3 });
+  const c6 = makePlatform(19.5, 9, 1, 2, 0x555555, true);
+  crushers.push({ obj:c6, baseY:9, range:5, speed:6.5, t:2.3 });
+
+  makeLaser(16, 2, 7, 0.1, 3.5, true);
+  makeLaser(16, 5, 7, 0.1, 3, true);
+  makeSpikes(15.5, 4.1, 3);
+  makeSpikes(17.5, 4.1, 3);
+  makeSpikes(19.5, 4.1, 3);
+  makePlatform(16, 4.3, 0.45, 0.28, 0x003300);
+  makePlatform(18.5, 4.3, 0.45, 0.28, 0x003300);
+
+  makeTeleportSpikes([[15.5,4.8],[17,4.8],[18.5,4.8],[17,4.5]], 0.4);
+
+  makePlatform(23, 3, 5, 1, 0x1a0000);
+  exitZone = makeExit(25, 3, true);
+
+  const l1 = new THREE.PointLight(0xff0000, 1.2, 12); l1.position.set(-4, 5, 3); scene.add(l1);
+  const l2 = new THREE.PointLight(0xff2200, 1.2, 14); l2.position.set(4, 6, 3); scene.add(l2);
+  const l3 = new THREE.PointLight(0xff0066, 1, 12); l3.position.set(12, 6, 3); scene.add(l3);
+  const l4 = new THREE.PointLight(0xff0000, 1.5, 16); l4.position.set(18, 6, 3); scene.add(l4);
+  scene.add(new THREE.AmbientLight(0xff3300, 0.15));
+}
+
+// ─── LASER HELPER ──────────────────────────────────────────────────────────
+function makeLaser(x, y, w, h, speed, horizontal) {
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, 0.2),
+    new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 3, transparent: true, opacity: 0.85 })
+  );
+  mesh.position.set(x, y, 0);
+  scene.add(mesh);
+  const glow = new THREE.PointLight(0xff0000, 0.8, 4);
+  glow.position.set(x, y, 1);
+  scene.add(glow);
+  const obj = { mesh, x, y, w: w-0.05, h: h-0.05, speed, t: Math.random()*Math.PI*2, active: true, glow };
+  lasers.push(obj);
+  return obj;
+}
+
+// ─── TELEPORT SPIKES ───────────────────────────────────────────────────────
+const teleportGroups = [];
+function makeTeleportSpikes(positions, interval) {
+  const group = new THREE.Group();
+  const geo = new THREE.ConeGeometry(0.32, 0.8, 4);
+  const mat = new THREE.MeshStandardMaterial({ color: 0xff00ff, emissive: 0xff00ff, emissiveIntensity: 1 });
+  const spike = new THREE.Mesh(geo, mat);
+  group.add(spike);
+  scene.add(group);
+  group.position.set(positions[0][0], positions[0][1], 0);
+  teleportGroups.push({ group, positions, interval, t: 0, idx: 0 });
+  const haz = { mesh: group, x: positions[0][0], y: positions[0][1], w: 0.6, h: 0.8, type:'hazard', isTeleport: true };
+  hazards.push(haz);
+}
+
+// ─── GAME LOOP ─────────────────────────────────────────────────────────────
+let lastTime = 0;
+const COYOTE = 0.14, JUMP_BUF = 0.1;
+
+function gameLoop(now) {
+  requestAnimationFrame(gameLoop);
+  const dt = Math.min((now - lastTime) / 1000, 0.05);
+  lastTime = now;
+
+  if (!gameActive) { renderer.render(scene, camera); return; }
+
+  // Update teleport spikes
+  for (const tg of teleportGroups) {
+    tg.t += dt;
+    if (tg.t > tg.interval) {
+      tg.t = 0;
+      tg.idx = (tg.idx + 1) % tg.positions.length;
+      const p = tg.positions[tg.idx];
+      tg.group.position.set(p[0], p[1], 0);
+      // Update hazard ref
+      for (const hz of hazards) {
+        if (hz.mesh === tg.group) { hz.x = p[0]; hz.y = p[1]; break; }
+      }
+    }
+  }
+
+  // Update lasers
+  for (const l of lasers) {
+    l.t += dt * l.speed;
+    l.active = Math.sin(l.t) > 0;
+    l.mesh.visible = l.active;
+    l.glow.intensity = l.active ? 0.8 : 0;
+  }
+
+  // Update moving platforms
+  for (const mp of movingPlatforms) {
+    mp.t += dt * mp.speed;
+    const t = (Math.sin(mp.t) + 1) / 2;
+    const nx = mp.startX + (mp.endX - mp.startX) * t;
+    const ny = mp.startY + (mp.endY - mp.startY) * t;
+    mp.obj.velX = nx - mp.obj.mesh.position.x;
+    mp.obj.velY = ny - mp.obj.mesh.position.y;
+    mp.obj.mesh.position.set(nx, ny, 0);
+    mp.obj.x = nx; mp.obj.y = ny;
+  }
+
+  // Update falling platforms
+  for (const fp of fallingPlatforms) {
+    if (fp.falling) {
+      fp.obj.mesh.position.y -= 20 * dt;
+      fp.obj.y = fp.obj.mesh.position.y;
+      if (fp.obj.mesh.position.y < -20) {
+        fp.obj.mesh.position.y = fp.origY;
+        fp.obj.y = fp.origY;
+        fp.falling = false; fp.triggered = false; fp.timer = 0;
+      }
+    } else if (fp.triggered) {
+      fp.timer += dt;
+      if (fp.timer >= fp.delay) fp.falling = true;
+    }
+    // Check player on top
+    if (!fp.falling && !fp.triggered) {
+      const p = playerBody, f = fp.obj;
+      if (rectOverlap(p.x, p.y, p.w, p.h, f.mesh.position.x, f.mesh.position.y, f.w, f.h)) {
+        if (p.y > f.mesh.position.y) fp.triggered = true;
+      }
+    }
+  }
+
+  // Update crushers
+  for (const cr of crushers) {
+    cr.t += dt * cr.speed;
+    const ny = cr.baseY - Math.abs(Math.sin(cr.t)) * cr.range;
+    cr.obj.mesh.position.y = ny;
+    cr.obj.y = ny;
+    // Check kill
+    const p = playerBody;
+    if (rectOverlap(p.x, p.y, p.w, p.h, cr.obj.mesh.position.x, cr.obj.mesh.position.y, cr.obj.w, cr.obj.h)) {
+      triggerDeath();
+    }
+  }
+
+  if (playerDead || levelWon) { renderer.render(scene, camera); return; }
+
+  // Player input
+  const pb = playerBody;
+  let moveX = 0;
+  if (keys['KeyA'] || keys['ArrowLeft']) moveX = -1;
+  if (keys['KeyD'] || keys['ArrowRight']) moveX = 1;
+  const wantJump = keys['Space'] || keys['KeyW'] || keys['ArrowUp'];
+
+  pb.vx = moveX * MOVE_SPEED;
+
+  // Gravity
+  pb.vy += gravity * dt;
+  pb.vy = Math.max(pb.vy, MAX_FALL);
+
+  // Coyote time
+  if (pb.grounded) pb.coyote = COYOTE;
+  else pb.coyote = Math.max(0, pb.coyote - dt);
+
+  // Jump buffer
+  if (wantJump && !pb._prevJump) pb.jumpBuffer = JUMP_BUF;
+  pb._prevJump = wantJump;
+  pb.jumpBuffer = Math.max(0, pb.jumpBuffer - dt);
+
+  if (pb.coyote > 0 && pb.jumpBuffer > 0) {
+    pb.vy = JUMP_SPEED;
+    pb.coyote = 0; pb.jumpBuffer = 0;
+  }
+
+  pb.grounded = false;
+
+  // Move
+  pb.x += pb.vx * dt;
+  pb.y += pb.vy * dt;
+
+  // Resolve platforms
+  resolveVsStatic(pb, platforms);
+
+  // Death: fall off
+  if (pb.y < -12) triggerDeath();
+
+  // Active lasers
+  for (const l of lasers) {
+    if (!l.active) continue;
+    if (rectOverlap(pb.x, pb.y, pb.w*0.85, pb.h*0.85, l.x, l.y, l.w, l.h)) triggerDeath();
+  }
+
+  // Hazards
+  for (const hz of hazards) {
+    const hx = hz.mesh.position.x, hy = hz.mesh.position.y;
+    if (rectOverlap(pb.x, pb.y, pb.w*0.8, pb.h*0.8, hx, hy, hz.w, hz.h)) triggerDeath();
+  }
+
+  // Exit zone
+  if (exitZone) {
+    if (rectOverlap(pb.x, pb.y, pb.w, pb.h, exitZone.x, exitZone.y+1.2, 1.4, 2.4)) {
+      triggerWin();
+    }
+  }
+
+  // Update mesh
+  playerMesh.position.set(pb.x, pb.y, 0);
+  const lean = pb.vx * 0.025;
+  playerMesh.rotation.z = THREE.MathUtils.lerp(playerMesh.rotation.z, -lean, 0.15);
+  const stretch = 1 + Math.abs(pb.vy) * 0.018;
+  playerMesh.scale.y = THREE.MathUtils.lerp(playerMesh.scale.y, stretch, 0.12);
+  playerMesh.scale.x = THREE.MathUtils.lerp(playerMesh.scale.x, 1/stretch, 0.12);
+  if (pb.vx !== 0) playerMesh.rotation.y = THREE.MathUtils.lerp(playerMesh.rotation.y, pb.vx > 0 ? 0.25 : -0.25, 0.1);
+
+  // Camera follow
+  const targetX = pb.x;
+  const targetY = pb.y + 2;
+  camera.position.x = THREE.MathUtils.lerp(camera.position.x, targetX, 0.08);
+  camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY + 3, 0.08);
+  camera.position.z = 18;
+  camera.lookAt(camera.position.x, camera.position.y - 2, 0);
+
+  renderer.render(scene, camera);
+}
+
+// ─── DEATH ─────────────────────────────────────────────────────────────────
+function triggerDeath() {
+  if (playerDead || levelWon) return;
+  playerDead = true;
+  deaths++;
+  document.getElementById('death-count').textContent = deaths;
+
+  const flash = document.getElementById('death-flash');
+  flash.style.opacity = '0.6';
+  setTimeout(() => flash.style.opacity = '0', 120);
+
+  // Red player
+  playerMesh.children.forEach(c => { if (c.material) c.material.color.setHex(0xff2200); });
+
+  setTimeout(() => {
+    playerBody.x = -8; playerBody.y = 2.5;
+    playerBody.vx = 0; playerBody.vy = 0;
+    playerMesh.position.set(-8, 2.5, 0);
+    playerMesh.children.forEach(c => {
+      if (c.material) {
+        if (c.geometry.type === 'BoxGeometry' && c.position.y > 0.4) c.material.color.setHex(0x66ccff);
+        else if (c.geometry.type === 'BoxGeometry') c.material.color.setHex(0x44aaff);
+      }
+    });
+    // Reset falling platforms
+    for (const fp of fallingPlatforms) {
+      fp.triggered = false; fp.falling = false; fp.timer = 0;
+      fp.obj.mesh.position.y = fp.origY; fp.obj.y = fp.origY;
+    }
+    playerDead = false;
+  }, 420);
+}
+
+// ─── WIN ───────────────────────────────────────────────────────────────────
+const transitionMessages = [
+  { title:"THE WALLS ARE WATCHING", body:"You're getting closer to the exit.\nOr are you just getting deeper in?" },
+  { title:"YOU THINK YOU'RE CLOSER?", body:"Every door you step through...\n...is one they built for you." },
+  { title:"THE EXIT FEELS SO FAR...", body:"Something is wrong with this world.\nIt keeps pushing back." },
+  { title:"WHY DOES EVERYTHING FIGHT BACK?", body:"The virtual world doesn't want you to leave.\nNeither does whatever made it." },
+  { title:"ALMOST THERE... OR ARE YOU?", body:"This is the last obstacle.\nThe real world is just beyond that door..." },
+];
+
+function triggerWin() {
+  if (levelWon || playerDead) return;
+  levelWon = true;
+  gameActive = false;
+
+  if (currentLevel < totalLevels) {
+    const msg = transitionMessages[currentLevel - 1];
+    showMsg(msg.title, msg.body, () => {
+      currentLevel++;
+      levelWon = false;
+      buildLevel(currentLevel);
+      gameActive = true;
+    });
+  } else {
+    // Trigger twist sequence
+    showTwistReveal();
+  }
+}
+
+// ─── UI HELPERS ────────────────────────────────────────────────────────────
+function showMsg(title, body, onContinue) {
+  const box = document.getElementById('msg-box');
+  document.getElementById('msg-title').textContent = title;
+  document.getElementById('msg-body').innerHTML = body.replace(/\n/g, '<br>');
+  box.classList.add('show');
+  const btn = document.getElementById('msg-btn');
+  const handler = () => {
+    box.classList.remove('show');
+    btn.removeEventListener('click', handler);
+    onContinue && onContinue();
+  };
+  btn.addEventListener('click', handler);
+}
+
+// ─── TWIST REVEAL ──────────────────────────────────────────────────────────
+function showTwistReveal() {
+  const rb = document.getElementById('reveal-box');
+  rb.style.opacity = '0';
+  rb.style.display = 'flex';
+  rb.style.flexDirection = 'column';
+  rb.style.alignItems = 'center';
+  rb.style.justifyContent = 'center';
+  rb.style.pointerEvents = 'all';
+  rb.innerHTML = '';
+  rb.style.background = '#000';
+
+  setTimeout(() => { rb.style.transition = 'opacity 1s'; rb.style.opacity = '1'; }, 50);
+
+  const seq = [
+    [0, () => {
+      rb.innerHTML = `<div style="color:#22cc66;font-size:clamp(18px,3.5vw,42px);letter-spacing:4px;animation:pulse 1s infinite;">LEVEL COMPLETE!</div>
+        <div style="color:#444;font-size:12px;letter-spacing:3px;margin-top:12px;">Reaching the exit...</div>`;
+    }],
+    [1800, () => {
+      rb.innerHTML = `<div style="color:#ffaa00;font-size:22px;letter-spacing:6px;animation:pulse 0.6s infinite;">Wait...</div>`;
+    }],
+    [3500, () => {
+      rb.innerHTML = `<div style="color:#ff4400;font-size:20px;letter-spacing:4px;">Something's wrong...</div>`;
+    }],
+    [5200, () => {
+      rb.innerHTML = `
+        <div style="color:#555;font-size:11px;letter-spacing:5px;margin-bottom:16px;">THE TRUTH REVEALS ITSELF</div>
+        <div style="color:#ff3333;font-size:clamp(18px,3.8vw,48px);font-weight:bold;letter-spacing:4px;text-shadow:0 0 20px rgba(255,50,50,0.6);text-align:center;">THE EXIT WAS<br>AT THE START</div>
+        <div style="color:#555;font-size:13px;letter-spacing:2px;margin-top:24px;max-width:480px;line-height:2;text-align:center;">
+          All along, the door to the real world was right<br>where you began. You were tricked into running.<br>
+          <span style="color:#ff4400;">The troll went extremely extreme.</span>
+        </div>`;
+    }],
+    [9500, () => {
+      rb.innerHTML = `
+        <div style="color:#666;font-size:13px;letter-spacing:3px;margin-bottom:24px;">And yet, you persisted...</div>
+        <div style="color:#ff3333;font-size:clamp(40px,8vw,96px);font-weight:bold;font-family:monospace;">${deaths}</div>
+        <div style="color:#555;font-size:11px;letter-spacing:4px;margin-top:8px;">TIMES YOU DIED</div>
+        <div style="color:#444;font-size:13px;letter-spacing:2px;margin-top:32px;">All for nothing?</div>
+        <div style="color:#ff4400;font-size:16px;letter-spacing:4px;margin-top:8px;animation:pulse 0.8s infinite;">Or was it?</div>`;
+    }],
+    [13500, () => {
+      rb.style.transition = 'opacity 1.5s';
+      rb.style.opacity = '0';
+      setTimeout(() => showFinalReveal(), 1600);
+    }],
+  ];
+
+  seq.forEach(([delay, fn]) => setTimeout(fn, delay));
+}
+
+// ─── FINAL REVEAL ──────────────────────────────────────────────────────────
+function showFinalReveal() {
+  const rb = document.getElementById('reveal-box');
+  rb.style.opacity = '0';
+  rb.style.background = '#000';
+  rb.innerHTML = '';
+
+  // Add dream particles
+  const pContainer = document.createElement('div');
+  pContainer.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;overflow:hidden;pointer-events:none;';
+  for (let i = 0; i < 30; i++) {
+    const p = document.createElement('div');
+    p.style.cssText = `position:absolute;width:${1+Math.random()*2}px;height:${1+Math.random()*2}px;border-radius:50%;background:#00eecc;left:${Math.random()*100}%;top:${100+Math.random()*20}%;animation:float-up ${6+Math.random()*8}s ${Math.random()*6}s linear infinite;opacity:0;`;
+    pContainer.appendChild(p);
+  }
+  rb.appendChild(pContainer);
+
+  const content = document.createElement('div');
+  content.style.cssText = 'position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;text-align:center;padding:0 24px;';
+  rb.appendChild(content);
+
+  setTimeout(() => { rb.style.transition = 'opacity 1.5s'; rb.style.opacity = '1'; }, 100);
+
+  const seq = [
+    [1600, () => {
+      content.innerHTML = `<div style="color:#555;font-size:13px;letter-spacing:4px;">But there's something else...</div>`;
+    }],
+    [3800, () => {
+      content.innerHTML = `
+        <div style="color:#cc0000;font-size:clamp(22px,4.5vw,58px);font-weight:bold;letter-spacing:4px;line-height:1.2;text-align:center;">
+          THERE IS NO ESCAPE
+        </div>
+        <div style="color:#555;font-size:12px;letter-spacing:2px;margin-top:20px;line-height:2;">
+          The exit at the start... it was never real.
+        </div>`;
+    }],
+    [7500, () => {
+      content.innerHTML = `<div style="color:#666;font-size:15px;letter-spacing:4px;">Because this place is called...</div>`;
+    }],
+    [10000, () => {
+      content.innerHTML = '';
+      const nameEl = document.createElement('div');
+      nameEl.style.cssText = `color:#00eecc;font-size:clamp(22px,5vw,68px);font-weight:bold;letter-spacing:8px;font-family:monospace;text-shadow:0 0 30px rgba(0,238,204,0.5),0 0 60px rgba(0,238,204,0.2);`;
+      content.appendChild(nameEl);
+      const line = document.createElement('div');
+      line.style.cssText = 'width:0;height:1px;background:linear-gradient(to right,transparent,#00eecc,transparent);margin:20px auto;transition:width 2s;';
+      content.appendChild(line);
+      const fullText = 'YOUR DREAM WORLD';
+      let idx = 0;
+      const cursor = document.createElement('span');
+      cursor.style.cssText = 'animation:pulse 0.6s infinite;color:#00eecc;';
+      cursor.textContent = '|';
+      nameEl.appendChild(cursor);
+      const typ = setInterval(() => {
+        cursor.before(document.createTextNode(fullText[idx]||''));
+        idx++;
+        if (idx > fullText.length) {
+          clearInterval(typ);
+          cursor.remove();
+          setTimeout(() => { line.style.width = '280px'; }, 300);
+        }
+      }, 100);
+    }],
+    [14500, () => {
+      content.innerHTML = `
+        <div style="color:#00eecc;font-size:clamp(18px,3.5vw,52px);font-weight:bold;letter-spacing:6px;margin-bottom:28px;font-family:monospace;text-shadow:0 0 20px rgba(0,238,204,0.4);">YOUR DREAM WORLD</div>
+        <div style="color:#444;font-size:12px;letter-spacing:2px;line-height:2.4;max-width:460px;">
+          You were never meant to leave.<br>
+          This world exists because you do.<br>
+          <span style="color:#00aaaa;">The real world was always just... a dream of a dream.</span><br>
+          <span style="color:#333;font-style:italic;">And so, the cycle begins again...</span>
+        </div>
+        <button class="btn" id="final-btn" style="pointer-events:all;margin-top:48px;border-color:#00eecc;color:#00eecc;">WAKE UP... AGAIN</button>`;
+      document.getElementById('final-btn').addEventListener('click', () => {
+        rb.style.transition = 'opacity 1.2s';
+        rb.style.opacity = '0';
+        setTimeout(() => {
+          rb.style.display = 'none';
+          rb.innerHTML = '';
+          currentLevel = 1; deaths = 0; levelWon = false; playerDead = false;
+          document.getElementById('death-count').textContent = '0';
+          buildLevel(1);
+          gameActive = true;
+          document.getElementById('overlay').classList.add('hidden');
+        }, 1300);
+      });
+    }],
+  ];
+
+  seq.forEach(([delay, fn]) => setTimeout(fn, delay));
+}
+
+// ─── CSS ANIMATION FOR PULSE ────────────────────────────────────────────────
+const style = document.createElement('style');
+style.textContent = `
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  @keyframes float-up {
+    0%   { transform:translateY(0) scale(1); opacity:0; }
+    10%  { opacity:0.7; }
+    90%  { opacity:0.2; }
+    100% { transform:translateY(-110vh) scale(0.3); opacity:0; }
+  }
+`;
+document.head.appendChild(style);
+
+// ─── TITLE GLITCH ──────────────────────────────────────────────────────────
+const glitchChars = '!@#$%^&*()_+-=[]{}|;<>?/\\';
+const titleEl = document.getElementById('title-glitch');
+setInterval(() => {
+  const orig = 'LEAVE ME ALONE';
+  let g = '';
+  for (let i = 0; i < orig.length; i++) {
+    g += Math.random() < 0.07 ? glitchChars[Math.floor(Math.random()*glitchChars.length)] : orig[i];
+  }
+  titleEl.textContent = g;
+}, 80);
+
+// ─── START ─────────────────────────────────────────────────────────────────
+document.getElementById('start-btn').addEventListener('click', () => {
+  document.getElementById('overlay').classList.add('hidden');
+  currentLevel = 1; deaths = 0; playerDead = false; levelWon = false;
+  document.getElementById('death-count').textContent = '0';
+  buildLevel(1);
+  gameActive = true;
+});
+
+setupLighting();
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
